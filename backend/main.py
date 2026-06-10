@@ -30,7 +30,14 @@ async def create_evaluation(request: schemas.EvaluationCreate, db: Session = Dep
         swot_analysis=report.get("swot_analysis", ""),
         revenue_model=report.get("revenue_model", ""),
         launch_plan=report.get("launch_plan", ""),
-        investor_pitch=report.get("investor_pitch", "")
+        investor_pitch=report.get("investor_pitch", ""),
+        financial_projections=report.get("financial_projections", {}),
+        roadmap=report.get("roadmap", {}),
+        revenue_breakdown=report.get("revenue_breakdown", {}),
+        market_size_breakdown=report.get("market_size_breakdown", {}),
+        risks_and_mitigations=report.get("risks_and_mitigations", []),
+        team_requirements=report.get("team_requirements", {}),
+        success_metrics=report.get("success_metrics", [])
     )
     
     db.add(db_evaluation)
@@ -40,7 +47,7 @@ async def create_evaluation(request: schemas.EvaluationCreate, db: Session = Dep
 
 @app.get("/history", response_model=List[schemas.Evaluation])
 def read_evaluations(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return db.query(models.Evaluation).offset(skip).limit(limit).all()
+    return db.query(models.Evaluation).offset(skip).limit(limit).order_by(models.Evaluation.created_at.desc()).all()
 
 @app.get("/history/{evaluation_id}", response_model=schemas.Evaluation)
 def read_evaluation(evaluation_id: int, db: Session = Depends(get_db)):
