@@ -1,347 +1,567 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Rocket, Send, Download, FileText, PieChart, Users, Target, Zap, Mail, TrendingUp, AlertCircle, Users2, Gauge } from 'lucide-react';
-import { ReportCard } from '../components/ReportCard';
-import { ChartDisplay } from '../components/ChartDisplay';
-import { RoadmapDisplay } from '../components/RoadmapDisplay';
-
+import { LineChart as RechartsLineChart, Line, BarChart, Bar, PieChart as RechartsPieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+ 
 const API_BASE = "http://localhost:8000";
-
+ 
+// Chart data
+const marketGrowthData = [
+  { month: 'Jan', market: 2400, competitor: 1400 },
+  { month: 'Feb', market: 3210, competitor: 2210 },
+  { month: 'Mar', market: 2290, competitor: 1290 },
+  { month: 'Apr', market: 2000, competitor: 1800 },
+  { month: 'May', market: 2181, competitor: 2100 },
+  { month: 'Jun', market: 2500, competitor: 2500 },
+];
+ 
+const revenueProjection = [
+  { year: 'Year 1', revenue: 50 },
+  { year: 'Year 2', revenue: 150 },
+  { year: 'Year 3', revenue: 400 },
+  { year: 'Year 4', revenue: 850 },
+  { year: 'Year 5', revenue: 1500 },
+];
+ 
+const swotDistribution = [
+  { name: 'Strengths', value: 35, fill: '#10b981' },
+  { name: 'Weaknesses', value: 20, fill: '#ef4444' },
+  { name: 'Opportunities', value: 30, fill: '#3b82f6' },
+  { name: 'Threats', value: 15, fill: '#f59e0b' },
+];
+ 
+interface EvaluationResult {
+  id?: number;
+  idea: string;
+  executive_summary: string;
+  market_opportunity: string;
+  competitor_analysis: string;
+  swot_analysis: string;
+  revenue_model: string;
+  launch_plan: string;
+  investor_pitch: string;
+  created_at?: string;
+}
+ 
 export const Dashboard = () => {
   const [idea, setIdea] = useState("");
+  const [result, setResult] = useState<EvaluationResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [report, setReport] = useState<any>(null);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!idea.trim()) return;
-    
+  const [error, setError] = useState("");
+  const [copySuccess, setCopySuccess] = useState(false);
+  const [regenLoading, setRegenLoading] = useState(false);
+ 
+  const handleSubmit = async () => {
+    if (!idea.trim()) {
+      setError("Please enter a startup idea before submitting.");
+      return;
+    }
+    setError("");
     setLoading(true);
-    setReport(null);
+    setResult(null);
     try {
       const res = await axios.post(`${API_BASE}/evaluate`, { idea });
-      setReport(res.data);
+      setResult(res.data);
     } catch (err) {
+      setError("Failed to connect to backend. Make sure the server is running.");
       console.error(err);
-      alert("Failed to evaluate idea. Is the backend running?");
     } finally {
       setLoading(false);
     }
   };
-
-  const exportAsMarkdown = () => {
-    if (!report) return;
-    const content = `
-# Startup Evaluation: ${report.idea}
-
-## Executive Summary
-${report.executive_summary}
-
-## Market Opportunity
-${report.market_opportunity}
-
-## Competitor Analysis
-${report.competitor_analysis}
-
-## SWOT Analysis
-${report.swot_analysis}
-
-## Revenue Model
-${report.revenue_model}
-
-## Launch Plan
-${report.launch_plan}
-
-## Financial Projections
-- Year 1 Revenue: ${report.financial_projections?.year1_revenue || 'N/A'}
-- Year 3 Revenue: ${report.financial_projections?.year3_revenue || 'N/A'}
-- Year 5 Revenue: ${report.financial_projections?.year5_revenue || 'N/A'}
-- Monthly Burn Rate: ${report.financial_projections?.burn_rate_monthly || 'N/A'}
-- Break Even: ${report.financial_projections?.break_even_months || 'N/A'} months
-- Initial Funding: ${report.financial_projections?.initial_funding_needed || 'N/A'}
-- Projected Margin: ${report.financial_projections?.projected_margin || 'N/A'}
-
-## Investor Pitch
-${report.investor_pitch}
-    `;
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `report-${report.id}.md`;
-    a.click();
+ 
+  const handleClear = () => {
+    setIdea("");
+    setResult(null);
+    setError("");
+    setCopySuccess(false);
   };
-
+ 
+  const handleCopy = async () => {
+    if (!result?.investor_pitch) return;
+    try {
+      await navigator.clipboard.writeText(result.investor_pitch);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2500);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = result.investor_pitch;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2500);
+    }
+  };
+ 
+  const handleRegenerate = async () => {
+    if (!idea.trim()) return;
+    setRegenLoading(true);
+    setError("");
+    try {
+      const res = await axios.post(`${API_BASE}/evaluate`, { idea });
+      setResult(res.data);
+      setCopySuccess(false);
+    } catch (err) {
+      setError("Regeneration failed. Try again.");
+      console.error(err);
+    } finally {
+      setRegenLoading(false);
+    }
+  };
+ 
   return (
-    <div className="space-y-12">
-      {/* Header */}
-      <div className="space-y-4">
-        <h2 className="text-5xl font-bold tracking-tight">Evaluate your next <span className="premium-gradient">big idea.</span></h2>
-        <p className="text-white/40 text-lg max-w-2xl">
-          Enter your startup vision. Our AI engine analyzes markets, competitors, financials, and roadmaps to generate a comprehensive investment-grade report.
+    <div style={styles.container}>
+      {/* ── Header ── */}
+      <div style={styles.headerSection}>
+        <h1 style={styles.title}>🚀 Startup Idea Evaluator</h1>
+        <p style={styles.subtitle}>
+          Enter your startup idea and get a full AI-powered evaluation with market insights
         </p>
       </div>
-
-      {/* Input Section */}
-      <form onSubmit={handleSubmit} className="relative group">
-        <div className="absolute -inset-1 bg-gradient-to-r from-accent to-blue-600 rounded-[2rem] blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
-        <div className="relative glass rounded-[2rem] p-4 flex flex-col md:flex-row items-end gap-4">
-          <textarea
-            value={idea}
-            onChange={(e) => setIdea(e.target.value)}
-            placeholder="Describe your startup idea in detail..."
-            className="w-full bg-transparent border-none focus:ring-0 text-xl p-4 min-h-[120px] resize-none"
-          />
-          <button
-            disabled={loading}
-            className="bg-accent hover:bg-blue-600 text-white p-6 rounded-2xl flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-accent/20"
-          >
-            {loading ? (
-              <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : (
-              <Send size={24} />
-            )}
-          </button>
-        </div>
-      </form>
-
-      {/* Results Section */}
+ 
+      {/* ── Input Section ── */}
+      <section style={styles.card}>
+        <label style={styles.label} htmlFor="idea-input">
+          Your Startup Idea
+        </label>
+        <textarea
+          id="idea-input"
+          style={styles.textarea}
+          placeholder="e.g. An AI-powered platform that matches freelancers with startups based on skill compatibility..."
+          value={idea}
+          onChange={(e) => setIdea(e.target.value)}
+          rows={5}
+          disabled={loading}
+        />
+ 
+        {error && <p style={styles.errorText}>⚠️ {error}</p>}
+ 
+        <button
+          style={{
+            ...styles.primaryBtn,
+            opacity: loading || !idea.trim() ? 0.6 : 1,
+            cursor: loading || !idea.trim() ? "not-allowed" : "pointer",
+          }}
+          onClick={handleSubmit}
+          disabled={loading || !idea.trim()}
+        >
+          {loading ? "⏳ Evaluating..." : "✨ Evaluate Idea"}
+        </button>
+      </section>
+ 
+      {/* ── Results Section ── */}
       <AnimatePresence>
-        {report && (
+        {result && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="space-y-12"
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
           >
-            {/* Header with Export Options */}
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <h3 className="text-2xl font-bold">Comprehensive Analysis</h3>
-              <div className="flex gap-4 flex-wrap">
-                <button 
-                  onClick={exportAsMarkdown}
-                  className="flex items-center gap-2 px-6 py-3 glass rounded-2xl text-sm font-medium hover:bg-white/10 transition-colors"
+            {/* ── Charts Section ── */}
+            <section style={styles.card}>
+              <h2 style={styles.sectionTitle}>📊 Market Intelligence Insights</h2>
+ 
+              <div style={styles.chartsGrid}>
+                {/* Line Chart */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  style={styles.chartContainer}
                 >
-                  <FileText size={18} /> Export MD
-                </button>
-                <button 
-                  onClick={() => window.print()}
-                  className="flex items-center gap-2 px-6 py-3 bg-white text-black rounded-2xl text-sm font-medium hover:bg-white/90 transition-colors"
+                  <h3 style={styles.chartTitle}>📈 Market vs Competitors</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <RechartsLineChart data={marketGrowthData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                      <XAxis stroke="#666" />
+                      <YAxis stroke="#666" />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                        labelStyle={{ color: '#fff' }}
+                      />
+                      <Legend />
+                      <Line type="monotone" dataKey="market" stroke="#0071e3" strokeWidth={2} />
+                      <Line type="monotone" dataKey="competitor" stroke="#ef4444" strokeWidth={2} />
+                    </RechartsLineChart>
+                  </ResponsiveContainer>
+                </motion.div>
+ 
+                {/* Bar Chart */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                  style={styles.chartContainer}
                 >
-                  <Download size={18} /> Download PDF
-                </button>
+                  <h3 style={styles.chartTitle}>💰 5-Year Revenue Projection</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={revenueProjection}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                      <XAxis stroke="#666" />
+                      <YAxis stroke="#666" />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                        labelStyle={{ color: '#fff' }}
+                      />
+                      <Bar dataKey="revenue" fill="#10b981" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </motion.div>
+ 
+                {/* Pie Chart */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  style={styles.chartContainer}
+                >
+                  <h3 style={styles.chartTitle}>⚖️ SWOT Distribution</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <RechartsPieChart>
+                      <Pie
+                        data={swotDistribution}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, value }) => `${name} ${value}%`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {swotDistribution.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                        labelStyle={{ color: '#fff' }}
+                      />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                </motion.div>
               </div>
-            </div>
-
-            {/* Financial Projections Cards */}
-            {report.financial_projections && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
-              >
-                <div className="glass rounded-2xl p-6 border border-white/5">
-                  <p className="text-white/50 text-sm mb-2">Year 1 Revenue</p>
-                  <p className="text-2xl font-bold text-accent">{report.financial_projections.year1_revenue}</p>
-                </div>
-                <div className="glass rounded-2xl p-6 border border-white/5">
-                  <p className="text-white/50 text-sm mb-2">Break Even</p>
-                  <p className="text-2xl font-bold text-accent">{report.financial_projections.break_even_months} months</p>
-                </div>
-                <div className="glass rounded-2xl p-6 border border-white/5">
-                  <p className="text-white/50 text-sm mb-2">Initial Funding</p>
-                  <p className="text-2xl font-bold text-accent">{report.financial_projections.initial_funding_needed}</p>
-                </div>
-                <div className="glass rounded-2xl p-6 border border-white/5">
-                  <p className="text-white/50 text-sm mb-2">Projected Margin</p>
-                  <p className="text-2xl font-bold text-accent">{report.financial_projections.projected_margin}</p>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Charts Section */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="grid grid-cols-1 lg:grid-cols-2 gap-6"
-            >
-              <ChartDisplay 
-                type="revenue" 
-                data={report} 
-                title="Revenue Projections"
-              />
-              <ChartDisplay 
-                type="breakdown" 
-                data={report} 
-                title="Revenue Breakdown"
-              />
-              <ChartDisplay 
-                type="market" 
-                data={report} 
-                title="Market Size by Segment"
-              />
-            </motion.div>
-
-            {/* Roadmap */}
-            {report.roadmap && Object.keys(report.roadmap).length > 0 && (
-              <RoadmapDisplay roadmap={report.roadmap} />
-            )}
-
-            {/* Main Report Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <ReportCard 
-                  title="Executive Summary" 
-                  content={report.executive_summary} 
-                  icon={<Zap size={20} />}
-                  delay={0.1}
+            </section>
+ 
+            {/* ── Summary Cards ── */}
+            <section style={styles.card}>
+              <h2 style={styles.sectionTitle}>📋 Evaluation Report</h2>
+              <p style={styles.ideaTag}>Idea: {result.idea}</p>
+ 
+              <div style={styles.grid}>
+                <ResultBlock
+                  icon="📌"
+                  title="Executive Summary"
+                  content={result.executive_summary}
+                  delay={0.4}
                 />
-              </div>
-              <ReportCard 
-                title="Market Opportunity" 
-                content={report.market_opportunity} 
-                icon={<TrendingUp size={20} />}
-                delay={0.2}
-              />
-              <ReportCard 
-                title="Competitor Analysis" 
-                content={report.competitor_analysis} 
-                icon={<Users size={20} />}
-                delay={0.3}
-              />
-              <ReportCard 
-                title="SWOT Analysis" 
-                content={report.swot_analysis} 
-                icon={<Target size={20} />}
-                delay={0.4}
-              />
-              <ReportCard 
-                title="Revenue Model" 
-                content={report.revenue_model} 
-                icon={<PieChart size={20} />}
-                delay={0.5}
-              />
-              <div className="lg:col-span-2">
-                <ReportCard 
-                  title="Launch Plan" 
-                  content={report.launch_plan} 
-                  icon={<Rocket size={20} />}
+                <ResultBlock
+                  icon="📈"
+                  title="Market Opportunity"
+                  content={result.market_opportunity}
+                  delay={0.5}
+                />
+                <ResultBlock
+                  icon="🏆"
+                  title="Competitor Analysis"
+                  content={result.competitor_analysis}
                   delay={0.6}
                 />
+                <ResultBlock
+                  icon="⚖️"
+                  title="SWOT Analysis"
+                  content={result.swot_analysis}
+                  delay={0.7}
+                />
+                <ResultBlock
+                  icon="💰"
+                  title="Revenue Model"
+                  content={result.revenue_model}
+                  delay={0.8}
+                />
+                <ResultBlock
+                  icon="🗓️"
+                  title="Launch Plan"
+                  content={result.launch_plan}
+                  delay={0.9}
+                />
               </div>
-            </div>
-
-            {/* Team Requirements */}
-            {report.team_requirements && Object.keys(report.team_requirements).length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="glass rounded-3xl p-8"
-              >
-                <div className="flex items-center gap-3 mb-6">
-                  <Users2 size={20} className="text-accent" />
-                  <h3 className="text-lg font-semibold text-white/90">Required Team</h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {Object.entries(report.team_requirements).map(([role, requirements]) => (
-                    <div key={role} className="bg-black/30 rounded-xl p-4 border border-white/5">
-                      <p className="text-accent font-semibold mb-2 capitalize">{role.replace(/_/g, ' ')}</p>
-                      <p className="text-white/70 text-sm leading-relaxed">{requirements}</p>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-
-            {/* Success Metrics */}
-            {report.success_metrics && report.success_metrics.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="glass rounded-3xl p-8"
-              >
-                <div className="flex items-center gap-3 mb-6">
-                  <Gauge size={20} className="text-accent" />
-                  <h3 className="text-lg font-semibold text-white/90">Success Metrics</h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {report.success_metrics.map((metric: string, idx: number) => (
-                    <div key={idx} className="bg-black/30 rounded-xl p-4 border border-white/5">
-                      <p className="text-white/70 text-sm leading-relaxed">{metric}</p>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-
-            {/* Risks & Mitigations */}
-            {report.risks_and_mitigations && report.risks_and_mitigations.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="glass rounded-3xl p-8"
-              >
-                <div className="flex items-center gap-3 mb-6">
-                  <AlertCircle size={20} className="text-accent" />
-                  <h3 className="text-lg font-semibold text-white/90">Risks & Mitigations</h3>
-                </div>
-                <div className="space-y-4">
-                  {report.risks_and_mitigations.map((risk: any, idx: number) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.05 }}
-                      className="glass rounded-xl p-6 border border-white/5 hover:border-accent/30 transition-all"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <p className="font-semibold text-white/90">{risk.risk}</p>
-                        <div className="flex gap-2">
-                          <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                            risk.likelihood === 'high' ? 'bg-red-500/20 text-red-400' :
-                            risk.likelihood === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                            'bg-green-500/20 text-green-400'
-                          }`}>
-                            {risk.likelihood}
-                          </span>
-                        </div>
-                      </div>
-                      <p className="text-white/60 text-sm mb-3"><strong>Impact:</strong> {risk.impact}</p>
-                      <p className="text-white/70 text-sm"><strong>Mitigation:</strong> {risk.mitigation}</p>
-                    </motion.div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-
-            {/* Investor Pitch Email */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="glass rounded-3xl p-8"
-            >
-              <div className="flex items-center gap-3 mb-6">
-                <Mail size={20} className="text-accent" />
-                <h3 className="text-lg font-semibold text-white/90">Investor Pitch Email</h3>
+            </section>
+ 
+            {/* ── Email Section ── */}
+            <section style={styles.card}>
+              <h2 style={styles.sectionTitle}>📧 Investor Pitch Email</h2>
+              <p style={styles.helperText}>
+                AI-generated follow-up email ready to send to investors.
+              </p>
+ 
+              <div style={styles.emailBox}>
+                <pre style={styles.emailText}>{result.investor_pitch}</pre>
               </div>
-              <div className="bg-black/50 rounded-xl p-6 border border-white/10 max-h-96 overflow-y-auto">
-                <pre className="text-white/80 text-sm leading-relaxed font-mono whitespace-pre-wrap break-words">
-                  {report.investor_pitch}
-                </pre>
+ 
+              {/* ── Utility Buttons ── */}
+              <div style={styles.buttonRow}>
+                <button
+                  style={{
+                    ...styles.utilBtn,
+                    ...styles.copyBtn,
+                    backgroundColor: copySuccess ? "#16a34a" : "#2563eb",
+                  }}
+                  onClick={handleCopy}
+                  title="Copy email to clipboard"
+                >
+                  {copySuccess ? "✅ Copied!" : "📋 Copy Email"}
+                </button>
+ 
+                <button
+                  style={{
+                    ...styles.utilBtn,
+                    ...styles.regenBtn,
+                    opacity: regenLoading ? 0.6 : 1,
+                    cursor: regenLoading ? "not-allowed" : "pointer",
+                  }}
+                  onClick={handleRegenerate}
+                  disabled={regenLoading}
+                  title="Generate a new version"
+                >
+                  {regenLoading ? "⏳ Regenerating..." : "🔄 Regenerate"}
+                </button>
+ 
+                <button
+                  style={{ ...styles.utilBtn, ...styles.clearBtn }}
+                  onClick={handleClear}
+                  title="Clear everything"
+                >
+                  🗑️ Clear All
+                </button>
               </div>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(report.investor_pitch);
-                  alert('Investor pitch copied to clipboard!');
-                }}
-                className="mt-4 w-full px-6 py-3 bg-accent hover:bg-blue-600 text-white rounded-xl font-semibold transition-all"
-              >
-                📋 Copy Investor Pitch
-              </button>
-            </motion.div>
+ 
+              {copySuccess && (
+                <div style={styles.copyBanner}>
+                  ✅ Email copied to clipboard! Ready to paste into Gmail or Outlook.
+                </div>
+              )}
+            </section>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
   );
+};
+ 
+function ResultBlock({
+  icon,
+  title,
+  content,
+  delay = 0,
+}: {
+  icon: string;
+  title: string;
+  content: string;
+  delay?: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay }}
+      style={styles.resultBlock}
+    >
+      <h3 style={styles.blockTitle}>
+        {icon} {title}
+      </h3>
+      <p style={styles.blockContent}>{content}</p>
+    </motion.div>
+  );
+}
+ 
+// Styles
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    minHeight: "100vh",
+    backgroundColor: "transparent",
+    color: "#e2e8f0",
+    fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+    padding: "0",
+  },
+  headerSection: {
+    textAlign: "center",
+    paddingTop: "24px",
+    paddingBottom: "24px",
+    borderBottom: "1px solid rgba(255,255,255,0.1)",
+    marginBottom: "32px",
+  },
+  title: {
+    fontSize: "2rem",
+    fontWeight: 800,
+    margin: "0 0 12px 0",
+    background: "linear-gradient(135deg, #60a5fa, #a78bfa)",
+    WebkitBackgroundClip: "text",
+    WebkitTextFillColor: "transparent",
+  },
+  subtitle: {
+    fontSize: "0.95rem",
+    color: "#94a3b8",
+    margin: "0",
+  },
+  card: {
+    maxWidth: "860px",
+    margin: "32px auto",
+    backgroundColor: "#1e293b",
+    borderRadius: "16px",
+    padding: "32px",
+    boxShadow: "0 4px 24px rgba(0,0,0,0.3)",
+  },
+  label: {
+    display: "block",
+    fontSize: "0.9rem",
+    fontWeight: 600,
+    color: "#94a3b8",
+    marginBottom: "10px",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+  },
+  textarea: {
+    width: "100%",
+    backgroundColor: "#0f172a",
+    color: "#e2e8f0",
+    border: "1.5px solid #334155",
+    borderRadius: "10px",
+    padding: "14px 16px",
+    fontSize: "1rem",
+    resize: "vertical",
+    outline: "none",
+    lineHeight: 1.6,
+    boxSizing: "border-box",
+    fontFamily: "inherit",
+  },
+  errorText: {
+    color: "#f87171",
+    fontSize: "0.9rem",
+    margin: "10px 0 0 0",
+  },
+  primaryBtn: {
+    display: "block",
+    width: "100%",
+    marginTop: "20px",
+    padding: "14px",
+    backgroundColor: "#6366f1",
+    color: "#fff",
+    border: "none",
+    borderRadius: "10px",
+    fontSize: "1rem",
+    fontWeight: 700,
+    cursor: "pointer",
+    transition: "background 0.2s",
+  },
+  sectionTitle: {
+    fontSize: "1.3rem",
+    fontWeight: 700,
+    color: "#e2e8f0",
+    margin: "0 0 20px 0",
+  },
+  ideaTag: {
+    fontSize: "0.85rem",
+    color: "#64748b",
+    fontStyle: "italic",
+    margin: "0 0 24px 0",
+  },
+  chartsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+    gap: "20px",
+    marginBottom: "32px",
+  },
+  chartContainer: {
+    backgroundColor: "#0f172a",
+    borderRadius: "12px",
+    padding: "20px",
+    border: "1px solid #1e3a5f",
+  },
+  chartTitle: {
+    fontSize: "0.95rem",
+    fontWeight: 700,
+    color: "#60a5fa",
+    margin: "0 0 16px 0",
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+    gap: "16px",
+  },
+  resultBlock: {
+    backgroundColor: "#0f172a",
+    borderRadius: "10px",
+    padding: "18px 20px",
+    border: "1px solid #1e3a5f",
+  },
+  blockTitle: {
+    fontSize: "0.95rem",
+    fontWeight: 700,
+    color: "#60a5fa",
+    margin: "0 0 10px 0",
+  },
+  blockContent: {
+    fontSize: "0.9rem",
+    color: "#cbd5e1",
+    lineHeight: 1.7,
+    margin: 0,
+    whiteSpace: "pre-wrap",
+  },
+  helperText: {
+    fontSize: "0.85rem",
+    color: "#64748b",
+    margin: "0 0 16px 0",
+  },
+  emailBox: {
+    backgroundColor: "#0f172a",
+    border: "1.5px solid #334155",
+    borderRadius: "10px",
+    padding: "20px 24px",
+    marginBottom: "20px",
+    overflowX: "auto" as const,
+  },
+  emailText: {
+    margin: 0,
+    fontSize: "0.9rem",
+    color: "#e2e8f0",
+    lineHeight: 1.8,
+    whiteSpace: "pre-wrap" as const,
+    fontFamily: "'Courier New', monospace",
+  },
+  buttonRow: {
+    display: "flex",
+    gap: "12px",
+    flexWrap: "wrap" as const,
+  },
+  utilBtn: {
+    padding: "11px 22px",
+    borderRadius: "8px",
+    border: "none",
+    fontSize: "0.9rem",
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: "opacity 0.2s, background 0.2s",
+    color: "#fff",
+  },
+  copyBtn: {
+    backgroundColor: "#2563eb",
+  },
+  regenBtn: {
+    backgroundColor: "#7c3aed",
+  },
+  clearBtn: {
+    backgroundColor: "#dc2626",
+  },
+  copyBanner: {
+    marginTop: "14px",
+    padding: "10px 16px",
+    backgroundColor: "#14532d",
+    borderRadius: "8px",
+    fontSize: "0.85rem",
+    color: "#86efac",
+    border: "1px solid #16a34a",
+  },
 };

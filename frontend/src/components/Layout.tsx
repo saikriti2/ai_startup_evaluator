@@ -1,8 +1,8 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, History, Search, Rocket } from 'lucide-react';
+import { LayoutDashboard, History, Rocket } from 'lucide-react';
 import { motion } from 'framer-motion';
-
+ 
 const Sidebar = () => {
   const location = useLocation();
   
@@ -10,7 +10,7 @@ const Sidebar = () => {
     { name: 'Evaluate', path: '/', icon: LayoutDashboard },
     { name: 'History', path: '/history', icon: History },
   ];
-
+ 
   return (
     <div className="w-64 h-screen glass border-r border-white/10 flex flex-col p-6 fixed left-0 top-0">
       <div className="flex items-center gap-3 mb-10 px-2">
@@ -29,25 +29,28 @@ const Sidebar = () => {
             <Link
               key={link.path}
               to={link.path}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 relative group ${
                 isActive 
-                  ? 'bg-white/10 text-white shadow-sm' 
+                  ? 'bg-white/10 text-white' 
                   : 'text-white/50 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Icon size={20} />
-              <span className="font-medium">{link.name}</span>
+              {/* Active indicator line */}
               {isActive && (
                 <motion.div
                   layoutId="active-pill"
-                  className="absolute left-0 w-1 h-6 bg-accent rounded-r-full"
+                  className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-accent rounded-r-full"
+                  transition={{ type: "spring", bounce: 0.2, duration: 0.3 }}
                 />
               )}
+              <Icon size={20} />
+              <span className="font-medium">{link.name}</span>
             </Link>
           );
         })}
       </nav>
-
+ 
+      {/* Status indicator */}
       <div className="mt-auto px-4 py-4 rounded-2xl glass border border-white/5">
         <p className="text-xs text-white/40 mb-1">Status</p>
         <div className="flex items-center gap-2">
@@ -58,7 +61,7 @@ const Sidebar = () => {
     </div>
   );
 };
-
+ 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
   return (
     <div className="min-h-screen bg-black text-white flex">
