@@ -1,0 +1,20 @@
+﻿
+> frontend@0.0.0 build
+> tsc -b && vite build
+
+src/App.tsx(265,19): error TS6133: 'i' is declared but its value is never read.
+src/App.tsx(548,23): error TS2322: Type '(v: number) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType> & ((value: ValueType, name: NameType, item: TooltipPayloadEntry, index: number, payload: TooltipPayload) => ReactNode | [...])'.
+  Type '(v: number) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType>'.
+    Types of parameters 'v' and 'value' are incompatible.
+      Type 'ValueType | undefined' is not assignable to type 'number'.
+        Type 'undefined' is not assignable to type 'number'.
+src/App.tsx(574,23): error TS2322: Type '(v: number) => [string]' is not assignable to type 'Formatter<ValueType, NameType> & ((value: ValueType, name: NameType, item: TooltipPayloadEntry, index: number, payload: TooltipPayload) => ReactNode | [...])'.
+  Type '(v: number) => [string]' is not assignable to type 'Formatter<ValueType, NameType>'.
+    Types of parameters 'v' and 'value' are incompatible.
+      Type 'ValueType | undefined' is not assignable to type 'number'.
+        Type 'undefined' is not assignable to type 'number'.
+src/components/ChartDisplay.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/components/ChartDisplay.tsx(70,35): error TS6133: 'entry' is declared but its value is never read.
+src/components/Layout.tsx(3,36): error TS6133: 'Search' is declared but its value is never read.
+src/components/RoadmapDisplay.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/pages/History.tsx(1,8): error TS6133: 'React' is declared but its value is never read.

@@ -545,7 +545,7 @@ function EvaluatorTab({
                     <Tooltip
                       contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: "8px" }}
                       labelStyle={{ color: "#e2e8f0" }}
-                      formatter={(v: number) => [`$${v}K`, "Revenue"]}
+                      formatter={(v: any) => [`$${v}K`, "Revenue"]}
                     />
                     <Bar dataKey="revenue" fill="#10b981" radius={[4, 4, 0, 0]} />
                   </BarChart>
@@ -571,7 +571,7 @@ function EvaluatorTab({
                     </Pie>
                     <Tooltip
                       contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: "8px" }}
-                      formatter={(v: number) => [`${v}%`]}
+                      formatter={(v: any) => [`${v}%`]}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -702,8 +702,8 @@ function HistoryTab({
       {/* Loading skeletons */}
       {historyLoading ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          {[1, 2, 3].map((i) => (
-            <div key={i} style={styles.skeleton} />
+          {[1, 2, 3].map((keyIdx) => (
+            <div key={keyIdx} style={styles.skeleton} />
           ))}
         </div>
       ) : history.length === 0 ? (
