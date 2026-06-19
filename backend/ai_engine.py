@@ -51,21 +51,22 @@ def _generate_sync(idea: str) -> str:
     return response.text
 
 
+import re
+
 def _parse_json(text: str) -> dict:
     """Extract valid JSON from Gemini response using multiple strategies."""
     original = text
 
-    # Strip markdown code fences
-    if "```json" in text:
-        text = text.split("```json")[1].split("```")[0].strip()
-    elif "```" in text:
-        text = text.split("```")[1].split("```")[0].strip()
+    # Strip markdown code fences more aggressively
+    text = re.sub(r"^```[a-zA-Z]*\n", "", text, flags=re.MULTILINE)
+    text = re.sub(r"```$", "", text, flags=re.MULTILINE)
+    text = text.strip()
 
     # Strategy 1: direct parse
     try:
         return json.loads(text)
-    except json.JSONDecodeError:
-        pass
+    except json.JSONDecodeError as e:
+        err_msg1 = str(e)
 
     # Strategy 2: find first { ... last }
     start = text.find("{")
@@ -73,10 +74,15 @@ def _parse_json(text: str) -> dict:
     if start != -1 and end > start:
         try:
             return json.loads(text[start:end])
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            err_msg2 = str(e)
 
-    logger.error(f"❌ Could not parse JSON from response. First 300 chars:\n{original[:300]}")
+    logger.error(f"❌ JSON Parse Error 1: {err_msg1}")
+    if 'err_msg2' in locals():
+        logger.error(f"❌ JSON Parse Error 2: {err_msg2}")
+    
+    logger.error(f"First 500 chars of AI text:\n{original[:500]}")
+    logger.error(f"Last 500 chars of AI text:\n{original[-500:]}")
     raise ValueError("Gemini returned unparseable JSON")
 
 
