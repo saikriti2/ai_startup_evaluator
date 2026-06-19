@@ -9,11 +9,11 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Premium AI Startup Evaluator API")
 
-# Enable CORS
+# Enable CORS properly (allow_credentials cannot be True if allow_origins is "*")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

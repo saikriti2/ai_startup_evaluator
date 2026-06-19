@@ -19,7 +19,11 @@ interface EvaluationResult {
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const API_BASE = "http://localhost:8000";
+// Use the Render backend if not running locally, or rely on VITE env vars.
+const API_BASE = import.meta.env.VITE_API_URL || 
+  (window.location.hostname === "localhost" 
+    ? "http://localhost:8000" 
+    : "https://ai-startup-evaluator-084k.onrender.com");
 type ActiveTab = "evaluator" | "history";
 
 interface ApiHealth {
