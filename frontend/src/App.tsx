@@ -22,6 +22,13 @@ interface EvaluationResult {
 const API_BASE = "http://localhost:8000";
 type ActiveTab = "evaluator" | "history";
 
+interface ApiHealth {
+  status: "checking" | "ok" | "error";
+  message: string;
+  connected?: boolean;
+  hint?: string;
+}
+
 // ── Main App ───────────────────────────────────────────────────────────────
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("evaluator");
@@ -34,12 +41,39 @@ export default function App() {
   const [copySuccess, setCopySuccess] = useState(false);
   const [regenLoading, setRegenLoading] = useState(false);
 
+  // API health state
+  const [apiHealth, setApiHealth] = useState<ApiHealth>({ status: "checking", message: "Checking Gemini API..." });
+
   // History state
   const [history, setHistory] = useState<EvaluationResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRecord, setSelectedRecord] = useState<EvaluationResult | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+
+  // ── Check API health on mount ──────────────────────────────────────────
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/health`);
+        const data = await res.json();
+        const gemini = data.gemini_api;
+        if (gemini.connected) {
+          setApiHealth({ status: "ok", message: "Gemini AI connected", connected: true });
+        } else {
+          setApiHealth({
+            status: "error",
+            message: gemini.message || "Gemini API not connected",
+            connected: false,
+            hint: gemini.hint,
+          });
+        }
+      } catch {
+        setApiHealth({ status: "error", message: "Backend not reachable", connected: false });
+      }
+    };
+    checkHealth();
+  }, []);
 
   // ── Fetch history ──────────────────────────────────────────────────────
   const fetchHistory = useCallback(async () => {
@@ -249,6 +283,36 @@ ${ev.investor_pitch}
           Enter your startup idea and get a full AI-powered evaluation report
         </p>
 
+        {/* API Health Status Pill */}
+        <div style={styles.healthRow}>
+          <span style={{
+            ...styles.healthPill,
+            backgroundColor:
+              apiHealth.status === "ok" ? "rgba(16,185,129,0.15)" :
+              apiHealth.status === "checking" ? "rgba(99,102,241,0.15)" :
+              "rgba(239,68,68,0.15)",
+            borderColor:
+              apiHealth.status === "ok" ? "#10b981" :
+              apiHealth.status === "checking" ? "#6366f1" :
+              "#ef4444",
+            color:
+              apiHealth.status === "ok" ? "#34d399" :
+              apiHealth.status === "checking" ? "#a5b4fc" :
+              "#f87171",
+          }}>
+            <span style={styles.healthDot(apiHealth.status)} />
+            {apiHealth.status === "checking" ? "⏳ Checking Gemini API..." :
+             apiHealth.status === "ok" ? "✅ Gemini AI Connected" :
+             "❌ Gemini API Error"}
+          </span>
+          {apiHealth.status === "error" && (
+            <span style={styles.healthMsg}>
+              {apiHealth.message}
+              {apiHealth.hint && <> · <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: "#60a5fa" }}>Get API Key →</a></>}
+            </span>
+          )}
+        </div>
+
         {/* Tab Navigation */}
         <nav style={styles.tabNav}>
           <button
@@ -273,6 +337,18 @@ ${ev.investor_pitch}
           </button>
         </nav>
       </header>
+
+      {/* ── Mock Warning Banner ── */}
+      {result && result.executive_summary.startsWith("[MOCK") && (
+        <div style={styles.mockBanner}>
+          ⚠️ <strong>Mock response detected</strong> — Your Gemini API key is not working.
+          {apiHealth.hint && <> <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: "#fbbf24" }}>Get a free API key here →</a></>}
+          <br />
+          <span style={{ fontSize: "0.82rem", opacity: 0.8 }}>
+            Update <code>backend/.env</code> with a valid working key, then restart the backend.
+          </span>
+        </div>
+      )}
 
       {/* ── Tab Content ── */}
       {activeTab === "evaluator" ? (
@@ -326,42 +402,59 @@ ${ev.investor_pitch}
   );
 }
 
-// ── Chart data builder (derives real data from AI text) ──────────────────
+// ── Chart data builder — extracts real numbers from AI text ──────────────
+function extractNumbers(text: string): number[] {
+  // Match dollar amounts like $2M, $500K, $1.5M or plain numbers
+  const matches = text.match(/(\$?\d+\.?\d*)\s*([KkMmBb])?/g) || [];
+  return matches.map((m) => {
+    const num = parseFloat(m.replace(/[^\d.]/g, ""));
+    if (/[Mm]/.test(m)) return num * 1000;   // to $K
+    if (/[Bb]/.test(m)) return num * 1000000;
+    return num;
+  }).filter((n) => !isNaN(n) && n > 0 && n < 10_000_000);
+}
+
 function buildChartData(result: EvaluationResult) {
-  // Revenue projection: scan revenue_model text for numbers, or use idea-length seed
+  // ── Revenue Projection: extract $XK / $XM milestones from AI revenue_model text
+  const revNums = extractNumbers(result.revenue_model);
+  // Pick up to 5 numbers, padded if needed
   const seed = result.idea.length % 10 + 1;
-  const revenueProjection = [
-    { year: "Yr 1", revenue: seed * 5 },
-    { year: "Yr 2", revenue: seed * 15 },
-    { year: "Yr 3", revenue: seed * 40 },
-    { year: "Yr 4", revenue: seed * 85 },
-    { year: "Yr 5", revenue: seed * 150 },
-  ];
+  const defaults = [seed * 5, seed * 18, seed * 55, seed * 120, seed * 250];
+  const revenueProjection = ["Yr 1", "Yr 2", "Yr 3", "Yr 4", "Yr 5"].map((year, i) => ({
+    year,
+    revenue: revNums[i] !== undefined ? Math.round(revNums[i]) : defaults[i],
+  }));
 
-  // Market vs Competitor: derive from word counts in market_opportunity & competitor_analysis
-  const mWords = result.market_opportunity.split(" ").length;
-  const cWords = result.competitor_analysis.split(" ").length;
-  const marketData = [
-    { month: "Q1", market: Math.round(mWords * 12), competitor: Math.round(cWords * 8) },
-    { month: "Q2", market: Math.round(mWords * 18), competitor: Math.round(cWords * 14) },
-    { month: "Q3", market: Math.round(mWords * 22), competitor: Math.round(cWords * 17) },
-    { month: "Q4", market: Math.round(mWords * 30), competitor: Math.round(cWords * 22) },
-    { month: "Q5", market: Math.round(mWords * 38), competitor: Math.round(cWords * 27) },
-    { month: "Q6", market: Math.round(mWords * 50), competitor: Math.round(cWords * 35) },
-  ];
+  // ── Market vs Competitor: extract market size numbers from opportunity text
+  const mNums = extractNumbers(result.market_opportunity);
+  const cNums = extractNumbers(result.competitor_analysis);
+  const baseMarket = mNums[0] || result.market_opportunity.split(" ").length * 15;
+  const baseComp   = cNums[0] || result.competitor_analysis.split(" ").length * 10;
+  const growthRates = [1, 1.4, 1.9, 2.6, 3.5, 4.8];
+  const marketData = ["Q1","Q2","Q3","Q4","Q5","Q6"].map((month, i) => ({
+    month,
+    market:     Math.round(baseMarket * growthRates[i]),
+    competitor: Math.round(baseComp   * growthRates[i] * 0.65),
+  }));
 
-  // SWOT pie: count keyword proxies in swot_analysis text
+  // ── SWOT: count items under each heading in the structured AI text
   const swotText = result.swot_analysis.toLowerCase();
-  const sCount = (swotText.match(/strength|advantage|strong|positive|lead/g) || []).length + 5;
-  const wCount = (swotText.match(/weakness|weak|lack|limit|challenge/g) || []).length + 3;
-  const oCount = (swotText.match(/opportunit|grow|expand|potential|emerge/g) || []).length + 4;
-  const tCount = (swotText.match(/threat|risk|compet|barrier|regul/g) || []).length + 2;
+  const countSection = (pattern: RegExp) => {
+    const idx = swotText.search(pattern);
+    if (idx === -1) return 3;
+    const slice = swotText.slice(idx, idx + 300);
+    return Math.max(1, (slice.match(/[;,•\-\n]/g) || []).length);
+  };
+  const sCount = countSection(/strengths?:/) + 2;
+  const wCount = countSection(/weaknesses?:/) + 1;
+  const oCount = countSection(/opportunit/) + 2;
+  const tCount = countSection(/threats?:/) + 1;
   const total = sCount + wCount + oCount + tCount;
   const swotDistribution = [
-    { name: "Strengths",     value: Math.round((sCount / total) * 100), fill: "#10b981" },
-    { name: "Weaknesses",   value: Math.round((wCount / total) * 100), fill: "#ef4444" },
-    { name: "Opportunities",value: Math.round((oCount / total) * 100), fill: "#3b82f6" },
-    { name: "Threats",      value: Math.round((tCount / total) * 100), fill: "#f59e0b" },
+    { name: "Strengths",      value: Math.round((sCount / total) * 100), fill: "#10b981" },
+    { name: "Weaknesses",     value: Math.round((wCount / total) * 100), fill: "#ef4444" },
+    { name: "Opportunities",  value: Math.round((oCount / total) * 100), fill: "#3b82f6" },
+    { name: "Threats",        value: Math.round((tCount / total) * 100), fill: "#f59e0b" },
   ];
 
   return { revenueProjection, marketData, swotDistribution };
@@ -777,7 +870,20 @@ function ResultBlock({ icon, title, content }: { icon: string; title: string; co
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────
-const styles: Record<string, React.CSSProperties> = {
+// healthDot is a function-style style helper (not stored in the styles object)
+const _healthDotStyle = (status: string): React.CSSProperties => ({
+  display: "inline-block",
+  width: "8px",
+  height: "8px",
+  borderRadius: "50%",
+  marginRight: "6px",
+  backgroundColor:
+    status === "ok" ? "#10b981" :
+    status === "checking" ? "#6366f1" : "#ef4444",
+  animation: status === "checking" ? "pulse 1.2s ease-in-out infinite" : "none",
+});
+
+const styles: Record<string, any> = {
   page: {
     minHeight: "100vh",
     backgroundColor: "#0f172a",
@@ -802,7 +908,44 @@ const styles: Record<string, React.CSSProperties> = {
   subtitle: {
     fontSize: "1rem",
     color: "#94a3b8",
-    margin: "0 0 28px 0",
+    margin: "0 0 12px 0",
+  },
+  healthRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "12px",
+    flexWrap: "wrap",
+    marginBottom: "20px",
+  },
+  healthPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "5px 14px",
+    borderRadius: "999px",
+    border: "1px solid",
+    fontSize: "0.82rem",
+    fontWeight: 600,
+    gap: "4px",
+  },
+  healthDot: _healthDotStyle,
+  healthMsg: {
+    fontSize: "0.8rem",
+    color: "#f87171",
+    maxWidth: "400px",
+    textAlign: "center",
+  },
+  mockBanner: {
+    maxWidth: "900px",
+    margin: "20px auto 0",
+    padding: "14px 20px",
+    backgroundColor: "rgba(239,68,68,0.1)",
+    border: "1px solid #ef4444",
+    borderRadius: "12px",
+    color: "#fca5a5",
+    fontSize: "0.9rem",
+    lineHeight: 1.6,
+    textAlign: "center",
   },
   // Tab navigation
   tabNav: {

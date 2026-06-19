@@ -1,0 +1,56 @@
+# ----------------------
+# Python Backend
+# ----------------------
+
+backend/venv/
+backend/__pycache__/
+backend/.env
+backend/*.db
+backend/*.sqlite3
+backend/.pytest_cache/
+backend/.mypy_cache/
+
+# ----------------------
+# React Frontend
+# ----------------------
+
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/.env
+
+# ----------------------
+# IDE
+# ----------------------
+
+.vscode/
+.idea/
+
+# ----------------------
+# Logs
+# ----------------------
+
+*.log
+
+# ----------------------
+# OS
+# ----------------------
+
+.DS_Store
+Thumbs.db
+
+# ----------------------
+# Python
+# ----------------------
+
+*.pyc
+*.pyo
+*.pyd
+
+# ----------------------
+# Coverage
+# ----------------------
+
+.coverage
+htmlcov/
+coverage/
