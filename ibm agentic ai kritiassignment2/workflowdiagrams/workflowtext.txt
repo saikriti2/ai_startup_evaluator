@@ -1,0 +1,521 @@
+================================================================================
+   ABC TECHNOLOGIES - CUSTOMER SUPPORT AUTOMATION WORKFLOW
+================================================================================
+
+OVERALL FLOW:
+
+                              START
+                                |
+                                v
+                    +---------------------------+
+                    |   Customer Query Input    |
+                    |  (customer_name, query)   |
+                    +---------------------------+
+                                |
+                                v
+                    +---------------------------+
+                    |  Initialize State Dict    |
+                    |  (intent, department...)  |
+                    +---------------------------+
+                                |
+                                v
+                    +---------------------------+
+                    | INTENT CLASSIFICATION     |
+                    |      Node                 |
+                    +---------------------------+
+                                |
+                    +-----------+-----------+-----------+
+                    |           |           |           |
+                    v           v           v           v
+                   Sales     Technical   Billing     Account
+                           Support
+                    |           |           |           |
+                    +-----+-----+-----+-----+-----+-----+
+                          |
+                          v
+                +---------------------------+
+                |  Intent Determined        |
+                |  (Sales/Tech/Billing/     |
+                |   Account/Memory/Unknown) |
+                +---------------------------+
+                          |
+                          v
+                +---------------------------+
+                |  Check: Is Intent Memory? |
+                +---------------------------+
+                    /              \
+                 YES /              \ NO
+                  /                  \
+                 v                    v
+        +-----------------+   +------------------+
+        |  MEMORY NODE    |   |  RAG RETRIEVAL   |
+        |  (SQLite)       |   |     NODE         |
+        +-----------------+   +------------------+
+        |                 |   |                  |
+        | Query SQLite    |   | Match keywords   |
+        | For previous    |   | to documents     |
+        | conversations   |   | (faq.txt, etc)   |
+        +-----------------+   +------------------+
+                 |                    |
+                 v                    v
+        +-----------------+   +------------------+
+        |  Retrieved from |   |  Retrieved from  |
+        |  conversation   |   |  knowledge base  |
+        |  history        |   |  (3 documents)   |
+        +-----------------+   +------------------+
+                 |                    |
+                 +----------+----------+
+                            |
+                            v
+                 +------------------+
+                 |  ROUTER NODE     |
+                 |  (Select Agent)  |
+                 +------------------+
+                    /    |    \    \
+                   /     |     \    \
+                Sales  Tech  Billing Account
+                /         |      \      \
+               v          v       v      v
+        +--------+ +--------+ +-------+ +--------+
+        | SALES  | | TECH   | |BILLING| |ACCOUNT |
+        | AGENT  | | AGENT  | | AGENT | | AGENT  |
+        +--------+ +--------+ +-------+ +--------+
+            |         |          |         |
+            | Reviews | Reviews  | Reviews | Reviews
+            | context | context  | context | context
+            | Generates| Generates| Generates| Generates
+            | draft    | draft    | draft    | draft
+            | response | response | response | response
+            |         |          |         |
+            +----+----+-----+----+----+----+
+                 |          |        |
+                 v          v        v
+        +--------------------+
+        | APPROVAL CHECK NODE|
+        |                    |
+        | Is this high-risk? |
+        | (Refund/Cancel/    |
+        |  Closure/Comp)     |
+        +--------------------+
+             /           \
+          YES/             \ NO
+           /                 \
+          v                   v
+    +----------+        +-----------+
+    | HUMAN    |        | SUPERVISOR|
+    | NODE     |        | NODE      |
+    +----------+        +-----------+
+    |          |        |           |
+    | Wait for | Reads  | Finalizes |
+    | approval | env var| response  |
+    |          |        | Adds brand|
+    | Decision | if "yes"| voice     |
+    | (yes/no) | -> auto| Review    |
+    |          | approve| for tone  |
+    +----------+        +-----------+
+         |                   |
+         +----------+--------+
+                    |
+                    v
+            +------------------+
+            |  SAVE NODE       |
+            |                  |
+            | Store to SQLite  |
+            | - customer_name  |
+            | - query          |
+            | - intent         |
+            | - response       |
+            | - timestamp      |
+            +------------------+
+                    |
+                    v
+            +------------------+
+            | FINAL RESPONSE   |
+            | PRINTED TO USER  |
+            +------------------+
+                    |
+                    v
+                  END
+
+
+================================================================================
+DETAILED NODE FLOW
+================================================================================
+
+1. INTENT CLASSIFICATION NODE
+   Input: state (contains "query")
+   Logic:
+     - Analyze query text
+     - Match keywords to intents
+     - Assign one of: Sales, Technical, Billing, Account, Memory, Unknown
+   Output: state["intent"] = determined intent
+
+   Keyword Examples:
+     "pricing" / "plan" / "cost" → Sales
+     "crash" / "error" / "bug" → Technical
+     "refund" / "billing" → Billing
+     "password" / "account" → Account
+     "previous" / "last issue" → Memory
+     Other → Unknown
+
+---
+
+2. MEMORY RECALL NODE (if intent == "Memory")
+   Input: state (contains "customer_name")
+   Logic:
+     - Query SQLite table: conversations
+     - WHERE customer_name = input customer_name
+     - Retrieve previous interactions
+   Output: 
+     - state["retrieved_context"] = previous conversations
+     - state["retrieved_sources"] = "SQLite Memory"
+
+---
+
+3. RAG RETRIEVAL NODE (if intent != "Memory")
+   Input: state (contains "query")
+   Logic:
+     - Extract keywords from query
+     - Match to document keywords:
+       • "pricing" → pricing_guide.txt, faq.txt
+       • "password" → company_policy.txt, faq.txt
+       • "crash" → technical_manual.txt, faq.txt
+       • "refund" → company_policy.txt
+       • Default → faq.txt
+     - Read matched documents (up to k=3)
+     - Return as list of dicts: [{"text": content, "source": filename}]
+   Output:
+     - state["retrieved_context"] = [documents]
+     - state["retrieved_sources"] = [filenames]
+
+---
+
+4. ROUTER NODE
+   Input: state (contains "intent")
+   Logic:
+     - Switch statement on intent value
+     - Route to appropriate agent
+   Routes:
+     - "Sales" → sales_node
+     - "Technical" → technical_node
+     - "Billing" → billing_node
+     - "Account" → account_node
+     - "Memory" → (already handled, go to approval)
+     - "Unknown" → generic_node
+
+---
+
+5. AGENT NODES (Sales, Technical, Billing, Account)
+   Input: state (contains "query", "retrieved_context")
+   Logic:
+     - Read retrieved documents/context
+     - Generate appropriate response for query
+     - For Billing: Check if "refund"/"cancel" → mark high-risk
+     - For Account: Check if "cancel account"/"close" → mark high-risk
+     - Generate draft response
+   Output:
+     - state["draft_response"] = generated response
+     - state["department"] = agent name
+     - state["approval_required"] = True/False
+     - state["risk_type"] = refund/cancel/closure/compensation (if applicable)
+
+---
+
+6. APPROVAL CHECK NODE
+   Input: state (contains "approval_required", "risk_type")
+   Logic:
+     - If approval_required == True:
+       → Route to human_node
+     - Else:
+       → Skip to supervisor_node
+
+---
+
+7. HUMAN APPROVAL NODE (if approval needed)
+   Input: state (contains "query", "draft_response", "risk_type")
+   Logic:
+     - Print to terminal: "Supervisor approval required for {risk_type} request"
+     - Read environment variable: HUMAN_APPROVAL_DECISION
+     - If demo mode: env var = "yes" (auto-approve)
+     - If interactive: Prompt user: "Approve? (yes/no):"
+     - Wait for user input
+   Output:
+     - state["approval_status"] = "approved" or "rejected"
+     - If rejected: state["draft_response"] = alternative response
+
+---
+
+8. SUPERVISOR NODE
+   Input: state (contains "draft_response")
+   Logic:
+     - Review response for quality
+     - Ensure professional tone
+     - Add company branding if needed
+     - Verify factual accuracy
+     - Finalize response
+   Output:
+     - state["response"] = final response (ready to send)
+
+---
+
+9. SAVE NODE
+   Input: state (full state dict)
+   Logic:
+     - Extract key fields:
+       • customer_name
+       • query
+       • intent
+       • department
+       • response
+     - Generate timestamp
+     - Insert into SQLite conversations table
+     - SQL: INSERT INTO conversations VALUES (...)
+   Output:
+     - Data persisted in memory/memory.db
+     - Entry retrievable for future "Memory" queries
+
+---
+
+10. END NODE
+    Output: Final response printed to user
+
+
+================================================================================
+CONDITIONAL ROUTING LOGIC
+================================================================================
+
+START
+  |
+  v
+[Intent Classification]
+  |
+  +---> Is Intent == "Memory"?
+  |       |
+  |       +---YES---> [Memory Node] ------+
+  |       |                               |
+  |       +---NO----> [RAG Retrieval] ---+
+  |                                      |
+  +----> All paths merge at [Router]     |
+         |                              |
+         v                              v
+       [Router]<-----------------------+
+         |
+         +--Sales----> [Sales Agent]
+         +--Tech-----> [Tech Agent]
+         +--Billing--> [Billing Agent]
+         +--Account--> [Account Agent]
+         +--Unknown--> [Generic Agent]
+         |
+         v (all agents merge)
+    [Approval Check]
+         |
+         +--YES (high-risk)----> [Human Approval] --+
+         |                                          |
+         +--NO (safe)----------> [Supervisor] -----+
+                                                   |
+                                                   v
+                                            [Save to SQLite]
+                                                   |
+                                                   v
+                                            [Print Response]
+                                                   |
+                                                   v
+                                                  END
+
+
+================================================================================
+DATA FLOW - STATE DICT EVOLUTION
+================================================================================
+
+Initial State:
+{
+    "customer_name": "David",
+    "query": "What are pricing plans?",
+    "intent": "Unknown",
+    "department": "",
+    "retrieved_context": [],
+    "retrieved_sources": [],
+    "draft_response": "",
+    "response": "",
+    "approval_required": False,
+    "approval_status": "not_required",
+    "conversation_history": []
+}
+
+After Intent Node:
+{
+    ...
+    "intent": "Sales",
+    ...
+}
+
+After RAG Retrieval Node:
+{
+    ...
+    "retrieved_context": [
+        {"text": "[pricing guide content]", "source": "pricing_guide.txt"},
+        {"text": "[faq content]", "source": "faq.txt"}
+    ],
+    "retrieved_sources": ["pricing_guide.txt", "faq.txt"],
+    ...
+}
+
+After Sales Agent Node:
+{
+    ...
+    "department": "Sales Agent",
+    "draft_response": "Our plans include Starter ($29), Professional ($99)...",
+    "approval_required": False,
+    ...
+}
+
+After Supervisor Node:
+{
+    ...
+    "response": "Thank you for your inquiry! Our plans include...",
+    ...
+}
+
+After Save Node:
+{
+    ...
+    "approval_status": "completed",
+    (data now in SQLite)
+}
+
+
+================================================================================
+EXAMPLE: REFUND REQUEST FLOW
+================================================================================
+
+Customer: "I need a refund for my annual subscription."
+
+1. Intent Classification:
+   Query matches "refund" keyword → Intent = "Billing"
+
+2. RAG Retrieval:
+   "refund" keyword found → Retrieves:
+     - company_policy.txt (refund policy)
+     - pricing_guide.txt (billing info)
+
+3. Router:
+   Intent = "Billing" → Route to Billing Agent
+
+4. Billing Agent:
+   Reads: "refund" in query
+   Marks: approval_required = True, risk_type = "Refund"
+   Generates draft response about refund process
+
+5. Approval Check:
+   approval_required = True → Route to Human Node
+
+6. Human Approval:
+   Demo mode: HUMAN_APPROVAL_DECISION = "yes"
+   Sets: approval_status = "approved"
+
+7. Supervisor:
+   Finalizes response: "Your refund has been approved..."
+
+8. Save Node:
+   INSERT INTO conversations:
+   - customer_name: David
+   - query: I need a refund...
+   - intent: Billing
+   - department: Billing Agent
+   - response: Your refund has been approved...
+
+9. Output:
+   Final Response shown to customer
+
+
+================================================================================
+EXAMPLE: MEMORY QUERY FLOW
+================================================================================
+
+Customer: "What was my previous support issue?"
+
+1. Intent Classification:
+   Keywords "previous", "last issue" → Intent = "Memory"
+
+2. Memory Node (NOT RAG):
+   Query SQLite: SELECT * FROM conversations WHERE customer_name = "David"
+   Found previous entry:
+     - Query: "I need a refund..."
+     - Response: "Your refund has been approved..."
+
+3. Router:
+   Intent = "Memory" → Route to Account/Generic Agent
+
+4. Agent:
+   Reads conversation history
+   Generates response: "Your previous issue was about a refund request, which was approved."
+
+5. Approval Check:
+   Memory queries not high-risk → approval_required = False
+
+6. Supervisor:
+   Finalizes response
+
+7. Save Node:
+   Save this new query to SQLite
+
+8. Output:
+   Response about previous conversation
+
+
+================================================================================
+KEY DECISION POINTS
+================================================================================
+
+1. Is Intent Memory?
+   → YES: Skip RAG, use SQLite history
+   → NO: Use RAG retrieval from docs
+
+2. Is Response High-Risk?
+   → YES (refund/cancel/closure/compensation): Get approval
+   → NO: Skip approval, go to supervisor
+
+3. Was Approval Given?
+   → YES: Proceed with approved response
+   → NO: Generate alternative response
+
+4. All Paths Lead To:
+   → Supervisor (finalize)
+   → Save (persist in SQLite)
+   → Output (show to customer)
+
+
+================================================================================
+FILE DEPENDENCIES
+================================================================================
+
+Code Files:
+  - app.py → Handles CLI, demo mode, interactive mode
+  - graph.py → Defines all nodes and routing logic
+  - state.py → Defines state data structure
+  
+  - agents/intent.py → Intent classification logic
+  - agents/sales.py → Sales agent
+  - agents/technical.py → Technical support agent
+  - agents/billing.py → Billing agent
+  - agents/account.py → Account agent
+  - agents/supervisor.py → Response finalization
+  - agents/human.py → Human approval handler
+  
+  - rag/retriever.py → Document retrieval logic
+  - rag/loader.py → Document loading
+  - rag/vectorstore.py → Vector search (optional)
+  
+  - memory/sqlite_memory.py → SQLite database helper
+  - memory/memory.db → SQLite database file
+
+Knowledge Base Documents:
+  - docs/faq.txt → FAQ and general questions
+  - docs/pricing_guide.txt → Pricing information
+  - docs/company_policy.txt → Policies and procedures
+  - docs/technical_manual.txt → Technical troubleshooting
+
+
+================================================================================
+END OF WORKFLOW DIAGRAM
+================================================================================
